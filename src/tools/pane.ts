@@ -2,127 +2,112 @@
 // Read-only or write operations on individual panes. Every tool is async with
 // a bounded timeout; nothing here blocks the agent.
 
-import { HerdrClient, TIMEOUTS, safeTimeoutMs } from "../herdr-client.js";
-import type { PaneReadResult, PaneSummary, ReadSource, ReadFormat, ToolResult } from "../types.js";
+import { Type } from "typebox";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { defineTool } from "@earendil-works/pi-coding-agent";
+import { HerdrClient, TIMEOUTS, safeTimeoutMs } from "../herdr-client.ts";
+import { herdrResultToAgent, READONLY_ANNOTATIONS, MUTATING_ANNOTATIONS } from "./_helpers.ts";
 
 // --- herdr_pane_list -------------------------------------------------------
 
-export const paneListToolDefinition = {
+export const paneListTool = defineTool({
   name: "herdr_pane_list",
-  label: "herdr_pane_list",
+  label: "Herdr: list panes",
   description:
     "List all panes in the Herdr session, optionally filtered by workspace. " +
     "Returns pane id, workspace, tab, focused, agent name/status, and cwd.",
-  parameters: {
-    type: "object",
-    properties: {
-      workspace_id: {
-        type: "string",
-        description: "Optional workspace id (e.g. 'wG') to filter by.",
-      },
-      timeout_ms: { type: "number" },
-    },
-    additionalProperties: false,
-  },
-  async execute(
-    args: { workspace_id?: string; timeout_ms?: number },
-    _ctx: unknown,
-  ): Promise<ToolResult<{ panes: PaneSummary[] }>> {
+  parameters: Type.Object({
+    workspace_id: Type.Optional(
+      Type.String({ description: "Optional workspace id (e.g. 'wG') to filter by." }),
+    ),
+    timeout_ms: Type.Optional(Type.Number({ minimum: 1 })),
+  }),
+  outputSchema: Type.Object({ panes: Type.Array(Type.Any()) }),
+  annotations: READONLY_ANNOTATIONS,
+  promptGuidelines: ["Use workspace_id to scope to a single Herdr workspace when relevant."],
+  async execute(_id, params, _signal) {
     const client = new HerdrClient({
-      timeoutMs: safeTimeoutMs(args.timeout_ms, TIMEOUTS.default),
+      timeoutMs: safeTimeoutMs(params.timeout_ms, TIMEOUTS.default),
     });
-    return client.request("pane.list", {
-      workspace_id: args.workspace_id ?? null,
-    });
+    return herdrResultToAgent(
+      await client.request("pane.list", { workspace_id: params.workspace_id ?? null }),
+    );
   },
-};
+});
 
 // --- herdr_pane_read --------------------------------------------------------
 
-export const paneReadToolDefinition = {
+const ReadSource = StringEnum(["visible", "recent", "recent_unwrapped", "detection"] as const);
+const ReadFormat = StringEnum(["text", "ansi"] as const);
+
+export const paneReadTool = defineTool({
   name: "herdr_pane_read",
-  label: "herdr_pane_read",
+  label: "Herdr: read pane",
   description:
-    "Read recent output from a Herdr pane. Use 'recent-unwrapped' for logs " +
+    "Read recent output from a Herdr pane. Use 'recent_unwrapped' for logs " +
     "and transcripts (soft-wrapped lines joined). Returns text or ansi.",
-  parameters: {
-    type: "object",
-    properties: {
-      pane_id: {
-        type: "string",
-        description: "Pane id (e.g. 'wG:p1') or 'current' for the focused pane.",
-      },
-      source: {
-        type: "string",
-        enum: ["visible", "recent", "recent-unwrapped", "detection"],
-        description: "What to read. Default: 'recent-unwrapped'.",
-      },
-      lines: {
-        type: "number",
-        description: "Max rows to return (default 120, max 5000).",
-      },
-      format: {
-        type: "string",
-        enum: ["text", "ansi"],
-        description: "Output format. Default: 'text'.",
-      },
-      timeout_ms: { type: "number" },
-    },
-    required: ["pane_id"],
-    additionalProperties: false,
-  },
-  async execute(
-    args: {
-      pane_id: string;
-      source?: ReadSource;
-      lines?: number;
-      format?: ReadFormat;
-      timeout_ms?: number;
-    },
-    _ctx: unknown,
-  ): Promise<ToolResult<PaneReadResult>> {
+  parameters: Type.Object({
+    pane_id: Type.String({
+      description: "Pane id (e.g. 'wG:p1') or 'current' for the focused pane.",
+    }),
+    source: Type.Optional(ReadSource),
+    lines: Type.Optional(
+      Type.Number({ description: "Max rows to return (default 120, max 5000).", minimum: 1, maximum: 5000 }),
+    ),
+    format: Type.Optional(ReadFormat),
+    timeout_ms: Type.Optional(Type.Number({ minimum: 1 })),
+  }),
+  outputSchema: Type.Any(),
+  annotations: READONLY_ANNOTATIONS,
+  promptGuidelines: [
+    "Prefer source='recent_unwrapped' for logs and transcripts.",
+    "Use source='detection' for the plain-text bottom-buffer that Herdr uses for agent detection.",
+  ],
+  async execute(_id, params, _signal) {
     const client = new HerdrClient({
-      timeoutMs: safeTimeoutMs(args.timeout_ms, TIMEOUTS.default),
+      timeoutMs: safeTimeoutMs(params.timeout_ms, TIMEOUTS.default),
     });
-    const lines = Math.min(Math.max(args.lines ?? 120, 1), 5000);
-    return client.request("pane.read", {
-      pane_id: args.pane_id,
-      source: args.source ?? "recent-unwrapped",
-      lines,
-      format: args.format ?? "text",
-    });
+    const lines = params.lines ?? 120;
+    return herdrResultToAgent(
+      await client.request("pane.read", {
+        pane_id: params.pane_id,
+        source: params.source ?? "recent_unwrapped",
+        lines,
+        format: params.format ?? "text",
+      }),
+    );
   },
-};
+});
 
 // --- herdr_pane_send_text ---------------------------------------------------
 
-export const paneSendTextToolDefinition = {
+export const paneSendTextTool = defineTool({
   name: "herdr_pane_send_text",
-  label: "herdr_pane_send_text",
+  label: "Herdr: send text to pane",
   description:
     "Send raw text + Enter to a Herdr pane. Use this only for ordinary " +
     "processes. For coding agents, prefer herdr_agent_prompt which respects " +
     "bracketed-paste mode and the agent's lifecycle.",
-  parameters: {
-    type: "object",
-    properties: {
-      pane_id: { type: "string", description: "Pane id (e.g. 'wG:p1')." },
-      text: { type: "string", description: "Text to send (Enter appended automatically)." },
-      timeout_ms: { type: "number" },
-    },
-    required: ["pane_id", "text"],
-    additionalProperties: false,
-  },
-  async execute(
-    args: { pane_id: string; text: string; timeout_ms?: number },
-    _ctx: unknown,
-  ): Promise<ToolResult<{ submitted: boolean }>> {
+  parameters: Type.Object({
+    pane_id: Type.String({ description: "Pane id (e.g. 'wG:p1')." }),
+    text: Type.String({ description: "Text to send (Enter appended automatically)." }),
+    timeout_ms: Type.Optional(Type.Number({ minimum: 1 })),
+  }),
+  outputSchema: Type.Object({ submitted: Type.Boolean() }),
+  annotations: MUTATING_ANNOTATIONS,
+  promptGuidelines: [
+    "Do NOT use this for coding agents. Use herdr_agent_prompt instead.",
+    "Wait for an interactive prompt in the target pane before sending.",
+  ],
+  async execute(_id, params, _signal) {
     const client = new HerdrClient({
-      timeoutMs: safeTimeoutMs(args.timeout_ms, TIMEOUTS.default),
+      timeoutMs: safeTimeoutMs(params.timeout_ms, TIMEOUTS.default),
     });
-    return client.request("pane.send_text", {
-      pane_id: args.pane_id,
-      text: args.text,
-    });
+    return herdrResultToAgent(
+      await client.request("pane.send_text", {
+        pane_id: params.pane_id,
+        text: params.text,
+      }),
+    );
   },
-};
+});

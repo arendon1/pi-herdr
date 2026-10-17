@@ -18,7 +18,7 @@ import { readFile, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import type { IpcRequest, IpcResponse, ToolResult } from "./types.js";
+import type { IpcRequest, IpcResponse, ToolResult } from "./types.ts";
 
 const DEFAULT_TIMEOUT_MS = 5_000;
 const LONG_TIMEOUT_MS = 30_000;

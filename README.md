@@ -17,22 +17,25 @@ herdr integration install pi
 
 ## What you get
 
-Nine `herdr_*` tools, all async with bounded timeouts:
+Seven `herdr_*` tools, all async with bounded timeouts. Every tool uses
+pi's actual `defineTool` + TypeBox shape, with proper `outputSchema`,
+`annotations`, and `promptGuidelines` so the model sees structured output
+and accurate capability hints.
 
 | Tool | Purpose |
 |---|---|
 | `herdr_snapshot` | Full session state (workspaces, tabs, panes, agents) in one call |
 | `herdr_agent_list` | List recognized coding agents and their status |
-| `herdr_agent_prompt` | Send a prompt to a named agent; optional `--wait` blocks on a single async call |
+| `herdr_agent_prompt` | Send a prompt to a named agent; `wait=true` blocks on a single async call until the agent settles (idle/done/blocked) or the timeout fires. `until` narrows the wait to specific states. |
 | `herdr_pane_list` | List panes, optionally filtered by workspace |
-| `herdr_pane_read` | Read recent output from a pane |
+| `herdr_pane_read` | Read recent output from a pane (`recent_unwrapped` is the safe default for logs) |
 | `herdr_pane_send_text` | Send raw text + Enter to a non-agent pane |
-| `herdr_subscribe` | Start an event subscription (returns `subscription_id`) |
-| `herdr_poll` | Bounded poll for events on a subscription |
-| `herdr_unsubscribe` | Close a subscription |
+| `herdr_wait_event` | One-shot server-side long-poll for an event matching a predicate. Single async call; the server holds the connection, the extension never spin-polls. |
 
 A bundled `skills/herdr/SKILL.md` is auto-loaded by Pi, so the agent knows
-when to use these tools and how to combine them.
+when to use these tools and how to combine them. The extension also injects
+a brief preamble into the system prompt on `before_agent_start` so the
+model is aware of the `herdr_*` namespace and the no-main-thread-lock rule.
 
 ## Hard rules (baked into the design)
 
@@ -75,41 +78,67 @@ when to use these tools and how to combine them.
 ## Develop
 
 ```bash
-# Type-check
-npm run typecheck
+# Install (no symlinks needed — the sd-card fs doesn't support them)
+npm install --no-bin-links
 
-# Run the test suite (smoke tests for the socket client)
+# Run the test suite (offline + herdr-down edge cases)
 npm test
+
+# Run the test suite WITH a live herdr server
+HERDR_TEST_LIVE=1 npm test
 ```
 
 The extension is plain TypeScript with no transpile step — Pi's runtime
-strips types on the fly (Node ≥ 22.19). Keep imports using `.js` extensions
-for ESM compatibility (TypeScript will resolve them via `moduleResolution:
-Bundler`).
+strips types on the fly (Node ≥ 22.19). Source imports use `.ts`
+extensions (the convention from `zellij-agent-bridge`); the test runner
+uses `node --experimental-strip-types`.
 
 ## Layout
 
 ```
 pi-herdr/
-├── index.ts                 # Extension entry; registers tools with Pi
-├── package.json             # pi-package metadata
+├── index.ts                 # Extension entry; (pi: ExtensionAPI) => Promise<void>
+├── package.json             # pi-package metadata + peer/regular deps
 ├── tsconfig.json            # Strict TS config (noUncheckedIndexedAccess)
+├── PLAN.md                  # Long-term design (6 phases; this is phase 1 + 4 partial)
 ├── src/
 │   ├── herdr-client.ts      # Async socket client (newline JSON)
 │   ├── types.ts             # TypeScript types mirroring the Herdr schema
+│   ├── prompts.ts           # System-prompt preamble + tool snippet
 │   └── tools/
+│       ├── _helpers.ts      # okResult, errorResult, herdrResultToAgent
 │       ├── snapshot.ts      # herdr_snapshot
 │       ├── pane.ts          # herdr_pane_{list,read,send_text}
 │       ├── agent.ts         # herdr_agent_{list,prompt}
-│       └── subscribe.ts     # herdr_{subscribe,poll,unsubscribe}
+│       ├── events.ts        # herdr_wait_event
+│       └── index.ts         # registerAllTools(pi)
 ├── skills/
 │   └── herdr/
 │       └── SKILL.md         # Bundled agent reference
-├── test/                    # Smoke tests for the socket client
+├── test/
+│   ├── herdr-client.test.ts # Wire layer (6 offline + 1 opt-in live)
+│   └── tools.test.ts        # Tool layer shape + execute() contracts
 ├── README.md
 ├── LICENSE                  # MIT
 └── CHANGELOG.md
 ```
+
+## Long-term plan
+
+See `PLAN.md` for the full design (prepared by a Plan subagent, verified
+against the herdr source tree). The MVP at this commit is **Phase 1 +
+parts of Phase 4**. Remaining phases:
+
+- **Phase 2** — positioning + layout tools (`herdr_focus_*`, `herdr_pane_split`,
+  `herdr_workspace_create`, etc.)
+- **Phase 3** — long-lived event stream + live topology model
+  (`HerdrStream` class, `events.subscribe` push, topology patching)
+- **Phase 5** — bifurcation: fire-and-forget child Pi spawning for
+  unrelated user steering messages
+- **Phase 6** — docs, `doctor.ts`, hardened integration tests
+
+The hard rule holds across all phases: **no tool ever locks the main
+thread of conversation with the agent**.
 
 ## License
 

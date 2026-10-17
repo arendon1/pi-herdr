@@ -95,7 +95,7 @@ export interface SessionSnapshot {
 
 // --- Pane read output -------------------------------------------------------
 
-export type ReadSource = "visible" | "recent" | "recent-unwrapped" | "detection";
+export type ReadSource = "visible" | "recent" | "recent_unwrapped" | "detection";
 export type ReadFormat = "text" | "ansi";
 
 export interface PaneReadResult {

@@ -13,17 +13,17 @@ This is the **pi-side** skill. It teaches an agent running **inside a Herdr pane
 - `herdr_agent_list` — list recognized coding agents and their status
 - `herdr_agent_prompt` — send a prompt to a named agent or pane-id-hosted agent; `--wait` blocks on a single async socket call
 - `herdr_pane_list` — list panes (optionally filtered by workspace)
-- `herdr_pane_read` — read recent output from a pane (`recent-unwrapped` is the safe default for logs)
+- `herdr_pane_read` — read recent output from a pane (`recent_unwrapped` is the safe default for logs)
 - `herdr_pane_send_text` — send raw text + Enter to a pane (use only for ordinary processes, not coding agents)
-- `herdr_subscribe` / `herdr_poll` / `herdr_unsubscribe` — push-style event subscription
+- `herdr_wait_event` — block on a specific event matching a predicate (single async server-side long-poll)
 
 ## Hard rules
 
-1. **Never lock the conversation thread.** Every `herdr_*` tool is async with a bounded timeout. Don't combine them into a busy-wait loop in your own reasoning. To wait for state change, use `herdr_agent_prompt` with `wait: true` (single async call) or the `subscribe` + `poll` pair (each poll is bounded).
-2. **Don't poll `herdr_agent_list` in a loop** to detect when an agent finishes. Use `subscribe` + `poll` for state-change events, or use `agent.prompt --wait` to block on a single turn.
-3. **Don't send raw text to a coding agent's pane.** Use `agent.prompt` — it respects bracketed-paste mode and the agent's lifecycle (`blocked` rejections, etc.).
-4. **Default to the calling pane and cwd** for splits and shells. Don't move the user's focus without being asked (`--no-focus`).
-5. **If a tool returns `{ok: false, error: ...}`**, surface the error to the user — don't silently retry. Common causes: herdr not running, agent not idle, subscription expired, network timeout.
+1. **Never lock the conversation thread.** Every `herdr_*` tool is async with a bounded timeout. Don't combine them into a busy-wait loop in your own reasoning. To wait for state change, use `herdr_agent_prompt` with `wait: true` (single async call) or `herdr_wait_event` with a predicate (server-side long-poll, single async call).
+2. **Don't poll `herdr_agent_list` in a loop** to detect when an agent finishes. Use `herdr_wait_event` with `{event: "pane.agent_status_changed", pane_id, agent_status}` to block on a specific state.
+3. **Don't send raw text to a coding agent's pane.** Use `herdr_agent_prompt` — it respects bracketed-paste mode and the agent's lifecycle (`blocked` rejections, etc.).
+4. **Default to the calling pane and cwd** for splits and shells. Don't move the user's focus without being asked.
+5. **If a tool returns `{ok: false, error: ...}`** (in the content text), surface the error to the user — don't silently retry. Common causes: herdr not running, agent not idle, predicate never matched, network timeout.
 
 ## Common patterns
 
@@ -32,14 +32,17 @@ This is the **pi-side** skill. It teaches an agent running **inside a Herdr pane
 ```
 herdr_snapshot                          # full state
 herdr_agent_list                        # just agents + statuses
-herdr_pane_list --workspace_id "wG"     # panes in a specific workspace
+herdr_pane_list                         # panes (all)
+herdr_pane_list workspace_id="wG"       # panes in a specific workspace
 ```
 
 ### Read another agent's recent output
 
 ```
-herdr_pane_read pane_id="wG:p1" source="recent-unwrapped" lines=200
+herdr_pane_read pane_id="wG:p1" source="recent_unwrapped" lines=200
 ```
+
+The default source is `recent_unwrapped` (soft-wrapped lines joined — best for logs).
 
 ### Send a prompt and wait for it to settle
 
@@ -57,24 +60,17 @@ herdr_agent_prompt target="reviewer" text="Continue" wait=true until=["blocked"]
 
 The `until` parameter narrows the wait to a specific state. Use `["blocked"]` when you expect a permission dialog.
 
-### Subscribe to events and drain them
+### Block on a specific event without prompting
+
+Use `herdr_wait_event` when you want to react to a state change without sending input:
 
 ```
-# Open the subscription
-herdr_subscribe topics=["agent_state", "pane_focus"]
-# → returns {"subscription_id": "sub-..."}
-
-# Poll for events, bounded by timeout_ms
-herdr_poll subscription_id="sub-..." timeout_ms=5000
-# → returns {"events": [...], "timed_out": false}
-
-# Repeat the poll as needed. When done:
-herdr_unsubscribe subscription_id="sub-..."
+herdr_wait_event match_event={event: "pane.agent_status_changed", pane_id: "wG:p1", agent_status: "idle"} timeout_ms=60000
 ```
 
-Each `herdr_poll` is a single async call. The agent controls the loop; the extension never spin-polls.
+This is a single server-side long-poll (verified in `~/herdr/src/api/wait.rs`): the extension holds the connection, the server polls the event hub, and writes one response when the predicate matches or the timeout fires. The agent's conversation thread is never locked.
 
-## When NOT to use these tools
+### When NOT to use these tools
 
 - For the user's **own focused pane**, do not call `herdr_pane_read` — that's what the user sees. If you need your own context, look at your own conversation, not the pane.
 - For ordinary shell work in a **new** shell, prefer `pane_split` + `pane_send_text` to get a sibling pane, not `agent.prompt`.
@@ -82,10 +78,10 @@ Each `herdr_poll` is a single async call. The agent controls the loop; the exten
 
 ## Errors and recovery
 
-| `error` | Cause | Recovery |
+| Error text contains | Cause | Recovery |
 |---|---|---|
 | `herdr socket not found` | Herdr not running | Tell the user to run `herdr` |
 | `timed out after Nms` | Operation exceeded its budget | Inspect state with `herdr_snapshot`; raise timeout if appropriate |
 | `agent_not_ready` | Agent not in a settled state | Wait or inspect with `herdr_agent_list` |
 | `agent_blocked` | Agent is waiting for approval | Read the pane, ask the user how to respond |
-| `unknown subscription` | Subscription expired or was on a different server | Re-subscribe with `herdr_subscribe` |
+| `invalid request: unknown variant` | Tool passed a value the schema rejects | Use a value from the tool's enum (e.g. `recent_unwrapped`, not `recent-unwrapped`) |

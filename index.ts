@@ -1,71 +1,55 @@
 // pi-herdr extension entry point.
 //
+// Verified pi extension contract (from ~/projects/zellij-agent-bridge):
+//   - default export: async function (pi: ExtensionAPI): Promise<void>
+//   - use pi.registerTool(...) for each tool
+//   - use pi.on("before_agent_start", ...) to inject the system prompt
+//
 // Hard rule (from soul core memory): never lock the main thread of
-// conversation with the agent. Every tool is async, has a bounded timeout,
-// returns errors as values, and never spin-polls. If you add a tool, follow
-// the same pattern: take timeout_ms as an optional arg, call HerdrClient
-// with safeTimeoutMs, return a ToolResult, never throw.
+// conversation with the agent. Every tool is async, has a bounded
+// timeout, returns errors as values, and never spin-polls. Tools use
+// HerdrClient under the hood; see src/herdr-client.ts for the wire layer.
 //
 // Setup expectations:
 //   1. herdr server must be running (HERDR_SOCKET_PATH or ~/.config/herdr/herdr.sock)
 //   2. `herdr integration install pi` should be run so Herdr recognizes pi
 //      sessions and records the session path (source="herdr:pi")
 //
-// On load we do a single liveness ping (2s) and surface a warning to pi if
-// Herdr isn't reachable. The warning is non-fatal — the agent can still use
-// the tools; they just return {ok: false, error: ...} until herdr starts.
+// On load we do a single liveness ping (2s) and log a warning if herdr
+// isn't reachable. The warning is non-fatal — the tools themselves
+// return a clean error result if herdr is down.
 
-import { HerdrClient } from "./src/herdr-client.js";
-import { snapshotToolDefinition } from "./src/tools/snapshot.js";
-import {
-  paneListToolDefinition,
-  paneReadToolDefinition,
-  paneSendTextToolDefinition,
-} from "./src/tools/pane.js";
-import {
-  agentListToolDefinition,
-  agentPromptToolDefinition,
-} from "./src/tools/agent.js";
-import {
-  subscribeToolDefinition,
-  pollToolDefinition,
-  unsubscribeToolDefinition,
-} from "./src/tools/subscribe.js";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { HerdrClient } from "./src/herdr-client.ts";
+import { registerAllTools } from "./src/tools/index.ts";
+import { SYSTEM_PROMPT_PREAMBLE, TOOL_SNIPPET } from "./src/prompts.ts";
 
-// All tools exposed to the agent. Order is the order they appear in pi's UI.
-export const tools = [
-  snapshotToolDefinition,
-  agentListToolDefinition,
-  agentPromptToolDefinition,
-  paneListToolDefinition,
-  paneReadToolDefinition,
-  paneSendTextToolDefinition,
-  subscribeToolDefinition,
-  pollToolDefinition,
-  unsubscribeToolDefinition,
-] as const;
-
-// Default export: the pi extension shape. Wraps tool execution so we can
-// add cross-cutting concerns (logging, metrics, agent-context injection) in
-// one place without touching every tool file.
-//
-// The exact shape pi expects may evolve; the wrapping pattern is the
-// important part: route every execute() through a single gate that enforces
-// the no-main-thread-lock rule.
-export default async function activate(): Promise<void> {
-  const client = new HerdrClient();
-  const alive = await client.ping(2_000);
-  if (!alive.ok) {
-    // Non-fatal: log to pi's console so the user sees the warning at startup.
-    // The tools themselves will return a clean error if herdr is down.
+export default async function (pi: ExtensionAPI): Promise<void> {
+  // 1. Probe: is herdr reachable? Non-fatal — the tools handle the
+  //    "herdr down" case themselves with a clean error result.
+  const probe = new HerdrClient();
+  const alive = await probe.ping(2_000);
+  if (!alive) {
     console.warn(
       "[pi-herdr] herdr server not reachable. " +
-        "Tools will return {ok: false, error: ...} until herdr is started. " +
-        `Reason: ${alive.error}`,
+        "Tools will return clean error results until herdr is started. " +
+        "Run `herdr` to start it, or `herdr integration install pi` to " +
+        "register this Pi session for tracking.",
     );
   }
-}
 
-// Named export so tests / external scripts can register a curated subset of
-// tools without going through the full default activation.
-export { tools as defaultTools };
+  // 2. Register all tools. Always-on; if herdr is down, each tool
+  //    surfaces a clean error on invocation.
+  registerAllTools(pi);
+
+  // 3. Inject the herdr preamble into the system prompt. The full
+  //    reference is in skills/herdr/SKILL.md; this is the brief,
+  //    always-on reminder.
+  pi.on("before_agent_start", async (event) => {
+    const base = event.systemPrompt ?? "";
+    const injected = `${SYSTEM_PROMPT_PREAMBLE}\n\nAvailable tools: ${TOOL_SNIPPET}`;
+    return {
+      systemPrompt: base ? `${base}\n\n${injected}` : injected,
+    };
+  });
+}
