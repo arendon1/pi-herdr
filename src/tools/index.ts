@@ -1,5 +1,6 @@
 // Barrel + registration helper. Imports every tool and calls
-// `pi.registerTool(...)` for each. Follows the zellij-agent-bridge pattern.
+// `pi.registerTool(...)` for each. Standard pi extension pattern
+// (see index.ts for the contract).
 //
 // All tools are always registered. If herdr is unreachable, the tools
 // surface a clean error result on invocation — they don't crash the agent.

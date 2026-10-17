@@ -1,10 +1,8 @@
-// Shared helpers for tool implementations. Mirrors the pattern from
-// zellij-agent-bridge's src/tools/_helpers.ts.
-//
-// Every tool in this extension follows the same conversion: take a
-// HerdrClient.ToolResult and turn it into an AgentToolResult that the
-// pi runtime can hand back to the model. Tools never throw out to the
-// agent — they always return an error-shaped result.
+// Shared helpers for tool implementations. Every tool in this extension
+// follows the same conversion: take a HerdrClient.ToolResult and turn it
+// into an AgentToolResult that the pi runtime can hand back to the
+// model. Tools never throw out to the agent — they always return an
+// error-shaped result.
 
 import type { AgentToolResult } from "@earendil-works/pi-coding-agent";
 import type { ToolResult as HerdrToolResult } from "../herdr-client.ts";

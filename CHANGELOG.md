@@ -29,6 +29,6 @@ All notable changes to `pi-herdr` are documented here. Format follows
   - `events.subscribe` is a long-lived push connection.
   - `events.wait` is a server-side long-poll (the server holds the connection,
     the extension never spin-polls).
-- Pi extension contract verified by reading `~/projects/zellij-agent-bridge/src/extension.ts`:
+- Pi extension contract verified against `@earendil-works/pi-coding-agent`:
   default export is `(pi: ExtensionAPI) => Promise<void>`, tools use
   `defineTool` with `Type.Object` parameters, errors return as `AgentToolResult`.

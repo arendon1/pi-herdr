@@ -1,6 +1,7 @@
 // pi-herdr extension entry point.
 //
-// Verified pi extension contract (from ~/projects/zellij-agent-bridge):
+// Verified pi extension contract (from @earendil-works/pi-coding-agent
+// source — see `defineTool`, `ExtensionAPI`, `AgentToolResult`):
 //   - default export: async function (pi: ExtensionAPI): Promise<void>
 //   - use pi.registerTool(...) for each tool
 //   - use pi.on("before_agent_start", ...) to inject the system prompt

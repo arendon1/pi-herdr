@@ -22,7 +22,7 @@ Phase 1 + parts of Phase 4. The remaining phases are pending review.
 - **Herdr versions**: binary v0.9.5, schema version 22, endpoint generation 1,
   102 methods across 19 groups.
 
-## Pi extension contract (verified from `~/projects/zellij-agent-bridge`)
+## Pi extension contract (verified from `@earendil-works/pi-coding-agent`)
 
 - **Default export**: `async function (pi: ExtensionAPI): Promise<void>`
   where `ExtensionAPI` is imported from `@earendil-works/pi-coding-agent`.

@@ -90,8 +90,8 @@ HERDR_TEST_LIVE=1 npm test
 
 The extension is plain TypeScript with no transpile step — Pi's runtime
 strips types on the fly (Node ≥ 22.19). Source imports use `.ts`
-extensions (the convention from `zellij-agent-bridge`); the test runner
-uses `node --experimental-strip-types`.
+extensions (so `node --experimental-strip-types` can resolve them
+without a build step); the test runner uses `node --experimental-strip-types`.
 
 ## Layout
 
