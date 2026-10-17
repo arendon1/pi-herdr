@@ -1,0 +1,45 @@
+{
+  "name": "pi-herdr",
+  "version": "0.1.0",
+  "description": "Pi extension that integrates with Herdr, a terminal workspace manager for coding agents. Provides tools to inspect, control, and coordinate panes/agents/workspaces from inside pi.",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-coding-agent",
+    "herdr",
+    "terminal-multiplexer",
+    "agent-coordination"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Andrés",
+    "url": "https://github.com/<your-username>"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/<your-username>/pi-herdr.git"
+  },
+  "bugs": {
+    "url": "https://github.com/<your-username>/pi-herdr/issues"
+  },
+  "homepage": "https://github.com/<your-username>/pi-herdr#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test test/*.test.ts"
+  },
+  "files": [
+    "index.ts",
+    "src/",
+    "skills/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ]
+}
