@@ -14,16 +14,16 @@
   "license": "MIT",
   "author": {
     "name": "Andrés",
-    "url": "https://github.com/<your-username>"
+    "url": "https://github.com/arendon1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/<your-username>/pi-herdr.git"
+    "url": "git+https://github.com/arendon1/pi-herdr.git"
   },
   "bugs": {
-    "url": "https://github.com/<your-username>/pi-herdr/issues"
+    "url": "https://github.com/arendon1/pi-herdr/issues"
   },
-  "homepage": "https://github.com/<your-username>/pi-herdr#readme",
+  "homepage": "https://github.com/arendon1/pi-herdr#readme",
   "publishConfig": {
     "access": "public"
   },
